@@ -23,7 +23,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Web;
 using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -41,7 +40,7 @@ namespace dotOmegle
         /// <value>
         /// Sub-domains of each server.
         /// </value>
-        public string[] serverList;
+        public string[] serverList { get; set; }
 
         /// <summary>
         /// Array of servers currently online on the Omegle service. 
@@ -49,11 +48,20 @@ namespace dotOmegle
         /// <value>
         /// Sub-domains of each server.
         /// </value>
-        public string[] antiNudeServerList;
+        public string[] antiNudeServerList { get; set; }
 
-        public List<string> Interests = new List<string>();
+        /// <summary>
+        /// List of interests 
+        /// </summary>
+        /// <value>
+        /// The users interests
+        /// </value>
+        public List<string> Interests { get; set; }
 
-        protected Timer updateTimer;
+        /// <summary>
+        /// Timer used for updates
+        /// </summary>
+        protected Timer updateTimer { get; set; }
 
         /// <summary>
         /// Raised when a message from a stranger is received.
@@ -139,6 +147,13 @@ namespace dotOmegle
         /// </value>
         public string Server { get; set; }
 
+        /// <summary>
+        /// Which language to use?
+        /// </summary>
+        /// <value>
+        /// en, nl, de, etc.
+        /// </value>
+        public string Language { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether this <see cref="Omegle"/> throws 
@@ -151,7 +166,7 @@ namespace dotOmegle
         /// <summary>
         /// Event processor status.
         /// </summary>
-        public enum status
+        public enum OmegleStatus
         {
             Stopped,
             Started
@@ -163,7 +178,7 @@ namespace dotOmegle
         /// <value>
         /// The status.
         /// </value>
-        public status Status { get; protected set; }
+        public OmegleStatus Status { get; protected set; }
 
         /// <summary>
         /// Gets a boolean specifying whether or not there's an active connection.
@@ -181,8 +196,9 @@ namespace dotOmegle
             GetServers();
             Id = null;
             checkInterval = 1000;
+            Interests = new List<string>();
             updateTimer = new Timer(TimerCallBack);
-            Status = status.Stopped;
+            Status = OmegleStatus.Stopped;
             IsConnected = false;
             Throws = true;
             Server = serverList[0];
@@ -203,7 +219,7 @@ namespace dotOmegle
         /// </summary>
         public void Start()
         {
-            Status = status.Started;
+            Status = OmegleStatus.Started;
             updateTimer.Change(0, Timeout.Infinite);
         }
 
@@ -212,7 +228,7 @@ namespace dotOmegle
         /// </summary>
         public void Stop()
         {
-            Status = status.Stopped;
+            Status = OmegleStatus.Stopped;
             updateTimer.Change(Timeout.Infinite, Timeout.Infinite);
         }
 
@@ -241,16 +257,22 @@ namespace dotOmegle
         /// </summary>
         public void GetID()
         {
-            PostSubmitter sendPost = new PostSubmitter();
-            sendPost.Url = String.Format("http://{0}.omegle.com/start?rcs=1&{1}", Server, this.Interests.Count > 0 ? "topics=" +  GetTopicPostString() : ""); // Adding topics outside of the URL doesn't work
-            sendPost.Type = PostSubmitter.PostTypeEnum.Post;
+            PostSubmitter sendPost = new PostSubmitter
+            {
+                Url = string.Format("http://{0}.omegle.com/start?rcs=1", Server),
+                Type = PostSubmitter.PostTypeEnum.Post
+            };
+
+            if (Interests.Count > 0) // Adding topics outside of the URL doesn't work 
+                sendPost.Url += "&topics=" + GetTopicPostString();
+            if (Language != null)
+                sendPost.Url += "&lang=" + Language;
 
             if (!Throws)
                 sendPost.WebExceptionEvent += WebException;
 
             Id = sendPost.Post();
-            Id = Id.TrimStart('"'); //gets rid of " at the start and end
-            Id = Id.TrimEnd('"');
+            Id = Id.Trim('"'); //gets rid of " at the start and end
         }
 
         /// <summary>
@@ -258,38 +280,38 @@ namespace dotOmegle
         /// </summary>
         private void GetServers()
         {
-            PostSubmitter sendPost = new PostSubmitter();
-            sendPost.Url = String.Format("http://omegle.com/status");
-            sendPost.Type = PostSubmitter.PostTypeEnum.Get;
+            PostSubmitter sendPost = new PostSubmitter
+            {
+                Url = string.Format("http://omegle.com/status"),
+                Type = PostSubmitter.PostTypeEnum.Get
+            };
 
             var strStatus = sendPost.Post();
             var dictStatus = JsonConvert.DeserializeObject<dynamic>(strStatus);
-            var listServers = new List<String>();
-            var listAntiNudeServers = new List<String>();
+            var listServers = new List<string>();
+            var listAntiNudeServers = new List<string>();
 
-            foreach (String server in dictStatus.servers)
+            foreach (string server in dictStatus.servers)
                 listServers.Add(server.Split('.')[0]);
 
-            foreach (String server in dictStatus.antinudeservers)
+            foreach (string server in dictStatus.antinudeservers)
                 listAntiNudeServers.Add(server.Split('.')[0]);
 
-            serverList = listServers.ToArray<String>();
-            antiNudeServerList = listAntiNudeServers.ToArray<String>();
+            serverList = listServers.ToArray<string>();
+            antiNudeServerList = listAntiNudeServers.ToArray<string>();
         }
 
         private string GetTopicPostString()
         {
-            int numTopics = this.Interests.Count;
+            int numTopics = Interests.Count;
             var sbTopics = new StringBuilder();
             for (int i = 0; i < numTopics; i++)
             {
-                sbTopics.AppendFormat("\"{0}\"", this.Interests[i]);
+                sbTopics.AppendFormat("\"{0}\"", Interests[i]);
                 if (i < numTopics - 1)
-                {
                     sbTopics.Append(",");
-                }
             }
-            return "[" + sbTopics.ToString() + "]";
+            return "[" + sbTopics + "]";
         }
 
         /// <summary>
@@ -301,8 +323,7 @@ namespace dotOmegle
         /// </returns>
         public string SendMessage(string message)
         {
-            message = HttpUtility.UrlEncode(message); //URL encode it first
-
+            message = Uri.EscapeDataString(message); //URL escape it first
             return SendMessageRaw(message);
         }
 
@@ -314,9 +335,7 @@ namespace dotOmegle
         public string SendMessageRaw(string message)
         {
             //Send Message format: [url]http://bajor.omegle.com/send?id=Id&msg=MSG[/url]
-
-            PostSubmitter sendPost = new PostSubmitter();
-            sendPost.Url = String.Format("http://{0}.omegle.com/send", Server);
+            PostSubmitter sendPost = new PostSubmitter { Url = string.Format("http://{0}.omegle.com/send", Server) };
             sendPost.PostItems.Add("id", Id);
             sendPost.PostItems.Add("msg", message);
             sendPost.Type = PostSubmitter.PostTypeEnum.Post;
@@ -335,12 +354,14 @@ namespace dotOmegle
         /// <returns></returns>
         public string SendCaptcha(string challenge, string response)
         {
-            PostSubmitter sendPost = new PostSubmitter();
-            sendPost.Url = String.Format("http://{0}.omegle.com/recaptcha", Server);
+            PostSubmitter sendPost = new PostSubmitter
+            {
+                Url = string.Format("http://{0}.omegle.com/recaptcha", Server),
+                Type = PostSubmitter.PostTypeEnum.Post
+            };
             sendPost.PostItems.Add("id", Id);
             sendPost.PostItems.Add("challenge", challenge);
             sendPost.PostItems.Add("response", response);
-            sendPost.Type = PostSubmitter.PostTypeEnum.Post;
 
             if (!Throws)
                 sendPost.WebExceptionEvent += WebException;
@@ -353,12 +374,12 @@ namespace dotOmegle
         /// </summary>
         public void StartTyping()
         {
-            PostSubmitter sendPost = new PostSubmitter();
-            sendPost.Url = String.Format("http://{0}.omegle.com/typing", Server);
+            PostSubmitter sendPost = new PostSubmitter
+            {
+                Url = string.Format("http://{0}.omegle.com/typing", Server),
+                Type = PostSubmitter.PostTypeEnum.Post
+            };
             sendPost.PostItems.Add("id", Id);
-            sendPost.Type = PostSubmitter.PostTypeEnum.Post;
-            
-
 
             if (!Throws)
                 sendPost.WebExceptionEvent += WebException;
@@ -371,10 +392,12 @@ namespace dotOmegle
         /// </summary>
         public void StopTyping()
         {
-            PostSubmitter sendPost = new PostSubmitter();
-            sendPost.Url = String.Format("http://{0}.omegle.com/stoppedtyping", Server);
+            PostSubmitter sendPost = new PostSubmitter
+            {
+                Url = string.Format("http://{0}.omegle.com/stoppedtyping", Server),
+                Type = PostSubmitter.PostTypeEnum.Post
+            };
             sendPost.PostItems.Add("id", Id);
-            sendPost.Type = PostSubmitter.PostTypeEnum.Post;
 
             if (!Throws)
                 sendPost.WebExceptionEvent += WebException;
@@ -393,13 +416,15 @@ namespace dotOmegle
             //This method could potentially be used to send messages from another user.
             //One would have to acquire said users Id first.
             //TODO: Find a way to get a strangers Id
-            message = HttpUtility.UrlEncode(message);
+            message = Uri.EscapeDataString(message);
 
-            PostSubmitter sendPost = new PostSubmitter();
-            sendPost.Url = String.Format("http://{0}.omegle.com/send", Server);
+            PostSubmitter sendPost = new PostSubmitter
+            {
+                Url = string.Format("http://{0}.omegle.com/send", Server),
+                Type = PostSubmitter.PostTypeEnum.Post
+            };
             sendPost.PostItems.Add("id", ownID);
             sendPost.PostItems.Add("msg", message);
-            sendPost.Type = PostSubmitter.PostTypeEnum.Post;
 
             if (!Throws)
                 sendPost.WebExceptionEvent += WebException;
@@ -413,10 +438,12 @@ namespace dotOmegle
         /// <returns></returns>
         public string SendDisconnect()
         {
-            PostSubmitter sendPost = new PostSubmitter();
-            sendPost.Url = String.Format("http://{0}.omegle.com/disconnect", Server);
+            PostSubmitter sendPost = new PostSubmitter
+            {
+                Url = string.Format("http://{0}.omegle.com/disconnect", Server),
+                Type = PostSubmitter.PostTypeEnum.Post
+            };
             sendPost.PostItems.Add("id", Id);
-            sendPost.Type = PostSubmitter.PostTypeEnum.Post;
 
             if (!Throws)
                 sendPost.WebExceptionEvent += WebException;
@@ -430,83 +457,68 @@ namespace dotOmegle
         /// <param name="response">The response.</param>
         private void Parse(string response)
         {
-            if (response == null) return;
+            if (response == null)
+                return;
+
             JArray events;
             try
             {
                 events = JsonConvert.DeserializeObject<JArray>(response);
+                if (events == null)
+                    return;
             }
             catch
             {
                 return;
             }
 
-            if (events != null)
+            foreach (JToken ev in events)
             {
-                foreach (JToken ev in events)
+                string event_ = ev[0].ToString();
+                switch (event_)
                 {
-                    string event_ = ev[0].ToString();
-                    switch (event_)
-                    {
-                        //we need to prefix and suffix each one with a literal " character
-                        case "connected":
-                            IsConnected = true;
-                            if (this.Connected != null)
-                                this.Connected(this, new EventArgs());
-                            break;
-                        case "strangerDisconnected":
-                            {
-                                if (this.StrangerDisconnected != null)
-                                    this.StrangerDisconnected(this, new EventArgs());
-
-                                break;
-                            }
-                        case "gotMessage":
-                            if (this.MessageReceived != null)
-                            {
-                                this.MessageReceived(this, new MessageReceivedArgs(ev[1].ToString().TrimStart('"').TrimEnd('"')));
-                            }
-                            break;
-                        case "waiting":
-                            if (this.WaitingForPartner != null)
-                                this.WaitingForPartner(this, new EventArgs());
-                            break;
-                        case "typing":
-                            if (this.StrangerTyping != null)
-                                this.StrangerTyping(this, new EventArgs());
-                            break;
-                        case "stoppedTyping":
-                            if (this.StrangerStoppedTyping != null)
-                                this.StrangerStoppedTyping(this, new EventArgs());
-                            break;
-                        case "count":
-                            if (this.Count != null)
-                                this.Count(this, new EventArgs()); //I'm a cheapskate, ev[1] holds user count though.
-                            break;
-                        case "recaptchaRequired":
-                            if (this.CaptchaRequired != null)
-                                this.CaptchaRequired(this, new CaptchaRequiredArgs(ev[1].ToString()));
-                            break;
-                        case "recaptchaRejected":
-                            if (this.CaptchaRefused != null)
-                                this.CaptchaRefused(this, new EventArgs());
-                            break;
-                        case "commonLikes":
-                            if (this.SharedInterestsFound != null)
-                                this.SharedInterestsFound(this, new SharedInterestEventArgs(ev[1].Select<JToken, string>((t) => t.ToString()).ToArray()));
-                            break;
-                        case "suggestSpyee":
-                        case "error": // should probably handle this one
-                        case "spyMessage":
-                        case "spyTyping":
-                        case "spyStoppedTyping":
-                        case "spyDisconnected":
-                        case "question":
-                        default:
-                            if (this.UnhandledResponse != null)
-                                this.UnhandledResponse(this, new UnhandledResponseEventArgs(ev.ToString()));
-                            break;
-                    }
+                //we need to prefix and suffix each one with a literal " character
+                case "connected":
+                    IsConnected = true;
+                    Connected?.Invoke(this, new EventArgs());
+                    break;
+                case "strangerDisconnected":
+                    StrangerDisconnected?.Invoke(this, new EventArgs());
+                    break;
+                case "gotMessage":
+                    MessageReceived?.Invoke(this, new MessageReceivedArgs(ev[1].ToString().Trim('"')));
+                    break;
+                case "waiting":
+                    WaitingForPartner?.Invoke(this, new EventArgs());
+                    break;
+                case "typing":
+                    StrangerTyping?.Invoke(this, new EventArgs());
+                    break;
+                case "stoppedTyping":
+                    StrangerStoppedTyping?.Invoke(this, new EventArgs());
+                    break;
+                case "count":
+                    Count?.Invoke(this, new EventArgs()); //I'm a cheapskate, ev[1] holds user count though.
+                    break;
+                case "recaptchaRequired":
+                    CaptchaRequired?.Invoke(this, new CaptchaRequiredArgs(ev[1].ToString()));
+                    break;
+                case "recaptchaRejected":
+                    CaptchaRefused?.Invoke(this, new EventArgs());
+                    break;
+                case "commonLikes":
+                    SharedInterestsFound?.Invoke(this, new SharedInterestEventArgs(ev[1].Select(t => t.ToString()).ToArray()));
+                    break;
+                case "suggestSpyee":
+                case "error": // should probably handle this one
+                case "spyMessage":
+                case "spyTyping":
+                case "spyStoppedTyping":
+                case "spyDisconnected":
+                case "question":
+                default:
+                    UnhandledResponse?.Invoke(this, new UnhandledResponseEventArgs(ev.ToString()));
+                    break;
                 }
             }
         }
@@ -516,11 +528,12 @@ namespace dotOmegle
         /// </summary>
         private void Listen()
         {
-            PostSubmitter eventlisten = new PostSubmitter();
-            eventlisten.Url = String.Format("http://{0}.omegle.com/events", Server);
+            PostSubmitter eventlisten = new PostSubmitter
+            {
+                Url = string.Format("http://{0}.omegle.com/events", Server),
+                Type = PostSubmitter.PostTypeEnum.Post
+            };
             eventlisten.PostItems.Add("id", Id);
-            eventlisten.Type = PostSubmitter.PostTypeEnum.Post;
-
             eventlisten.WebExceptionEvent += WebException;
 
             Parse(eventlisten.Post());
@@ -533,10 +546,9 @@ namespace dotOmegle
         protected void TimerCallBack(object info)
         {
             updateTimer.Change(Timeout.Infinite, Timeout.Infinite);
-
             Listen();
 
-            if (Status == status.Started)
+            if (Status == OmegleStatus.Started)
                 updateTimer.Change(checkInterval, checkInterval);
         }
     }
