@@ -139,7 +139,14 @@ namespace dotOmegle
         /// </value>
         public string Server { get; set; }
 
-
+        /// <summary>
+        /// Which language to use?
+        /// </summary>
+        /// <value>
+        /// en, nl, de, etc.
+        /// </value>
+        public string Language { get; set; }
+        
         /// <summary>
         /// Gets or sets a value indicating whether this <see cref="Omegle"/> throws 
         /// exceptions or passes them through the <see cref="WebException"/> event handler. 
@@ -242,15 +249,16 @@ namespace dotOmegle
         public void GetID()
         {
             PostSubmitter sendPost = new PostSubmitter();
-            sendPost.Url = String.Format("http://{0}.omegle.com/start?rcs=1&{1}", Server, this.Interests.Count > 0 ? "topics=" +  GetTopicPostString() : ""); // Adding topics outside of the URL doesn't work
+            sendPost.Url = String.Format("http://{0}.omegle.com/start?rcs=1{1}{2}", Server, 
+                this.Interests.Count > 0    ? "&topics="    + GetTopicPostString() : "", // Adding topics outside of the URL doesn't work 
+                this.Language != null       ? "&lang="      + this.Language : "");
             sendPost.Type = PostSubmitter.PostTypeEnum.Post;
 
             if (!Throws)
                 sendPost.WebExceptionEvent += WebException;
 
             Id = sendPost.Post();
-            Id = Id.TrimStart('"'); //gets rid of " at the start and end
-            Id = Id.TrimEnd('"');
+            Id = Id.Trim('"'); //gets rid of " at the start and end
         }
 
         /// <summary>
